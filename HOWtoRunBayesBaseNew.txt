@@ -1,0 +1,38 @@
+1) Make GenericDatabase_setup. You can use any of the BayeBase codes to generate the setup database. My code doesn't generate the setup. You can use GeneralBayesBase to generate Setup.
+for example if database name is Premier_League_MidStr setup must be in the format of Premier_League_MidStr_setup
+
+
+2) What is the individual you want to ground? is it a Movie, player or a team? you should change a line in the main function of BayesBaseNew/src/Wrapper.Java.
+line 127:  st.execute("insert into " + databaseName4 + "_setup.Groundings values ( 'Players0', " + PlayerID +"); to the individuals of your choice. 
+
+ 
+3) Generate Generic Bayesnet: You can use any BayesBase code to generate Generic Basenet: Or you can use the project BayesBaseNew to generate it by doing followings:
+  a) change databasename: for example replace all the Premier_League_MidFielder_Dec2015 in all the config files (BayesBaseNew/cfg/groundcfg/scorecomputation.cfg,	BayesBaseNew/src/config.cfg,BayesBaseNew/src/config.cfg) with your database name
+  a) In BayesBaseNew/src/config.cfg file modify the following lines: Individual=0 and Approach1 = 0 and Approach2 = 0
+  b) In BayesBaseNew/cfg/groundcfg/scorecomputation.cfg change ELD= 0 
+  c) in BayesBaseNew/cfg/groundcfg/subsetctcomputation.cfg make Grounded=0 and ELD=0
+  d) In the code: in BayesBaseNew/src/Wrapper.Java in the function named: PlayerTeamW change the quary to run it for only one 
+
+ select PlayerID from YourDatabaseName.`IndividualofChoice` when IndividualID=****; Then it will generate the generic database for you with this name YourDatabaseName_***_BN
+YourDatabaseName_***_CT and YourDatabaseName_***_db, then you have to rename these databases to YourDatabaseName_db;YourDatabaseName_BN; YourDatabaseName_CT
+to reflect that this is infact generic.
+
+
+
+4) Now you should iterate through all individuals: in two different runs.
+	First Run:
+		a)In BayesBaseNew/src/config.cfg change Individual=1;Approach1 = 0;Approach2 = 1 and ELD=0
+		b)In databaseserver make a schema for code to store result in. Schema must have two tables: Score and Path_BayesNet make tables in the result database just like these two tables in Premier_League_Midfielder_Dec2015_CorrelationSchema: create table score like Premier_League_Midfielder_Dec2015_CorrelationSchema.Score 
+		c)In BayesBaseNew/cfg/groundcfg/scorecomputation.cfg change ELD=0
+		d)In BayesBaseNew/cfg/groundcfg/subsetctcomputation.cfg make Grounded=1 and ELD=0
+		e)In the code: in BayesBaseNew/src/Wrapper.Java in the function named: PlayerTeamW change the quary to run it for all the individuals
+
+	Second Run:
+		a)In BayesBaseNew/src/config.cfg change Individual=1;Approach1 = 0;Approach2 = 0 and ELD=1
+		b)In databaseserver make another schema for code to store result in. Just like a database you created for the result of first run, it must have two tables with those formats
+
+
+
+
+
+
