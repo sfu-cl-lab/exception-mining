@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<classpath>
+	<classpathentry kind="src" path="src"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/FlatTableGenerator/mysql-connector-java-5.1.18-bin.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/mrjtoolkitstubs.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/opt77.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/mssqlserver.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/commons-collections-3.1.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/pal-1.4.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/jflex-1.4.2.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/jdepend.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/msbase.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/packageManager.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/weka.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/jh.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/colt.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/jmathplot.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/jmatharray.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/xom-1.1.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/ibatis-common-2.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/junit.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/mtj.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/jgrapht-jdk1.6.jar"/>
+	<classpathentry kind="lib" path="/local-scratch/SRiahi/workspaceNew/lib/commons-lang-2.6.jar"/>
+	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER/org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType/jdk1.8.0_66"/>
+	<classpathentry kind="output" path="bin"/>
+</classpath>

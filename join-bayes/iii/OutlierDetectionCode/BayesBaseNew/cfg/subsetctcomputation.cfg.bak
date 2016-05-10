@@ -1,0 +1,20 @@
+dbaddress = mysql://cs-oschulte-01.cs.sfu.ca
+dbusername = root
+dbpassword = joinbayes
+dbBNschema = Premier_League_2011
+dbDataSchema = Premier_League_2011
+dbOutputSchema = Premier_League_2011
+pathBayesNet = Path_BayesNets
+LinkAnalysis = 0
+Continuous = 0
+Grounded = 1
+
+
+dbname = Mutagenesis_std
+AutomaticSetup = 0
+LinkCorrelations = 0
+ComputeKLD = 0
+
+dbschema = Premier_League_2011
+dbcounts = Premier_League_2011
+dbcondprob = Premier_League_2011

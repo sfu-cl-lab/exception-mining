@@ -1,0 +1,8 @@
+dbname = unielwin
+dbusername = sfu
+dbpassword = joinBayes
+dbaddress = mysql://kripke.cs.sfu.ca
+AutomaticSetup = 1
+LinkCorrelations = 0
+ComputeKLD = 0
+Continuous = 0
