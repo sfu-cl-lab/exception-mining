@@ -1,0 +1,145 @@
+///////////////////////////////////////////////////////////////////////////////
+// For information as to what this class does, see the Javadoc, below.       //
+// Copyright (C) 2005 by Peter Spirtes, Richard Scheines, Joseph Ramsey,     //
+// and Clark Glymour.                                                        //
+//                                                                           //
+// This program is free software; you can redistribute it and/or modify      //
+// it under the terms of the GNU General Public License as published by      //
+// the Free Software Foundation; either version 2 of the License, or         //
+// (at your option) any later version.                                       //
+//                                                                           //
+// This program is distributed in the hope that it will be useful,           //
+// but WITHOUT ANY WARRANTY; without even the implied warranty of            //
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the             //
+// GNU General Public License for more details.                              //
+//                                                                           //
+// You should have received a copy of the GNU General Public License         //
+// along with this program; if not, write to the Free Software               //
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA //
+///////////////////////////////////////////////////////////////////////////////
+
+package edu.cmu.tetradapp.model;
+
+import edu.cmu.tetrad.data.Knowledge;
+import edu.cmu.tetrad.graph.Dag;
+import edu.cmu.tetrad.graph.Graph;
+import edu.cmu.tetrad.search.FciSearch;
+import edu.cmu.tetrad.search.IndTestType;
+import edu.cmu.tetrad.search.IndependenceTest;
+import edu.cmu.tetrad.search.SearchGraphUtils;
+
+/**
+ * Extends AbstractAlgorithmRunner to produce a wrapper for the FCI algorithm.
+ *
+ * @author Joseph Ramsey
+ * @version $Revision: 5940 $ $Date: 2006-01-20 13:34:55 -0500 (Fri, 20 Jan
+ *          2006) $
+ */
+public class FciRunner extends AbstractAlgorithmRunner
+        implements IndTestProducer, GraphSource {
+    static final long serialVersionUID = 23L;
+
+    //=========================CONSTRUCTORS================================//
+
+    public FciRunner(DataWrapper dataWrapper, FciSearchParams params) {
+        super(dataWrapper, params);
+    }
+
+    public FciRunner(Graph graph, FciSearchParams params) {
+        super(graph, params);
+    }
+
+    public FciRunner(GraphWrapper graphWrapper, FciSearchParams params) {
+        super(graphWrapper.getGraph(), params);
+    }
+
+    public FciRunner(DagWrapper dagWrapper, FciSearchParams params) {
+        super(dagWrapper.getDag(), params);
+    }
+
+    public FciRunner(SemGraphWrapper dagWrapper, FciSearchParams params) {
+        super(dagWrapper.getGraph(), params);
+    }
+
+    /**
+     * Generates a simple exemplar of this class to test serialization.
+     *
+     * @see edu.cmu.TestSerialization
+     * @see edu.cmu.tetradapp.util.TetradSerializableUtils
+     */
+    public static FciRunner serializableInstance() {
+        return new FciRunner(Dag.serializableInstance(),
+                FciSearchParams.serializableInstance());
+    }
+
+    //=================PUBLIC METHODS OVERRIDING ABSTRACT=================//
+
+    /**
+     * Executes the algorithm, producing (at least) a result workbench. Must be
+     * implemented in the extending class.
+     */
+    @Override
+	public void execute() {
+        Knowledge knowledge = getParams().getKnowledge();
+        SearchParams searchParams = getParams();
+
+        IndTestParams indTestParams = searchParams.getIndTestParams();
+
+//            Cfci fciSearch =
+//                    new Cfci(getIndependenceTest(), knowledge);
+//            fciSearch.setDepth(indTestParams.getDepth());
+//            Graph graph = fciSearch.search();
+//
+//            if (knowledge.isDefaultToKnowledgeLayout()) {
+//                SearchGraphUtils.arrangeByKnowledgeTiers(graph, knowledge);
+//            }
+//
+//            setResultGraph(graph);
+
+            FciSearch fciSearch =
+                    new FciSearch(getIndependenceTest(), knowledge);
+            fciSearch.setDepth(indTestParams.getDepth());
+            Graph graph = fciSearch.search();
+
+            if (knowledge.isDefaultToKnowledgeLayout()) {
+                SearchGraphUtils.arrangeByKnowledgeTiers(graph, knowledge);
+            }
+
+            setResultGraph(graph);
+    }
+
+    @Override
+	public IndependenceTest getIndependenceTest() {
+        Object dataModel = getDataSet();
+
+        if (dataModel == null) {
+            dataModel = getSourceGraph();
+        }
+
+        SearchParams params = getParams();
+        IndTestType testType;
+
+        if (getParams() instanceof BasicSearchParams) {
+            BasicSearchParams _params = (BasicSearchParams) params;
+            testType = _params.getIndTestType();
+        }
+        else {
+            FciSearchParams _params = (FciSearchParams) params;
+            testType = _params.getIndTestType();
+        }
+
+        return new IndTestFactory().getTest(dataModel, params, testType);
+    }
+
+    @Override
+	public Graph getGraph() {
+        return getResultGraph();
+    }
+
+    @Override
+	public boolean supportsKnowledge() {
+        return true;
+    }
+}
+
+

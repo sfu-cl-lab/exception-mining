@@ -1,0 +1,861 @@
+/*
+ * Author: Kurt Routley
+ * Date: September 23, 2013
+ */
+import java.nio.file.FileSystems;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import com.mysql.jdbc.Connection;
+import com.mysql.jdbc.exceptions.MySQLSyntaxErrorException;
+
+public class FunctorWrapper
+{
+	static Connection con0, con1, conFinal;
+	static String databaseName, databaseName1, databaseName2, databaseName3, databaseName4,
+				  databaseName5;
+	static String dbUsername;
+	static String dbPassword;
+	static String dbaddress;
+	static int groundingCount;
+	static String functorId;
+	static boolean processingRNode = false;
+	
+	/*
+	 * Global variable: true to use nodes in Markov Blanket, false to use only
+	 * functor's parents and associated RNodes
+	 */
+	static boolean useMarkovBlanket = false;
+
+	public static void main(String[] args) throws Exception
+	{
+		long time1=System.currentTimeMillis();
+		/*
+		 * Assume @database@_target_setup is already created
+		 * FUTURE: Need to create this if not already done.
+		 */
+		//MakeTargetSetup.runMakeTargetSetup();
+		
+		Path path = FileSystems.getDefault().getPath("src", "config1.cfg");
+		Path origpath = FileSystems.getDefault().getPath("src", "origconfig1.cfg");
+		Path newpath = FileSystems.getDefault().getPath("src", "config2.cfg");
+//		Files.delete(path);
+//		Files.copy(origpath, path);
+//		Files.delete(origpath);
+		setVarsFromConfig();
+		connectDBTargetSetup();
+		
+		/*
+		 * KLUDGE: Should modify functions to allow different configuration
+		 * 		   sources
+		 * Need to set databaseName to "@database@_target"
+		 * Copy current configuration to new file, rewrite configuration
+		 * new databaseName
+		 */
+		
+		Files.copy( path, origpath );
+		Files.delete(path);
+		Files.copy( newpath, path );
+		
+		ArrayList<String> functors = GetFunctors();
+		
+		Statement st = con0.createStatement();
+		
+		st.execute( "DROP SCHEMA IF EXISTS " + databaseName3 + ";" );
+		st.execute( "CREATE SCHEMA " + databaseName3 + ";" );
+		
+		st.execute( "DROP SCHEMA IF EXISTS " + databaseName5 + ";" );
+		st.execute( "CREATE SCHEMA " + databaseName5 + ";" );
+		connectDBTargetFinalCT();
+		connectDBTargetFinal();
+		
+		functorId = "";
+		String node = "";
+		String table = "";
+		
+		if ( useMarkovBlanket )
+		{
+			node = "TargetMBNode";
+			table = "TargetMB";
+		}
+		else
+		{
+			node = "TargetParent";
+			table = "TargetParents";
+		}
+		
+		for ( int i = 0; i < functors.size(); i++ )
+		{
+			functorId = functors.get(i);
+			
+			/*
+			 * 1Nodes
+			 */ 
+			st.execute( "CREATE TABLE 1Nodes AS SELECT * FROM " + 
+					    databaseName + "_BN.1Nodes WHERE 1nid IN (SELECT " +
+					    node + " FROM " + databaseName + "_BN." + table + 
+					    " WHERE TargetNode = '" + functorId + "') or 1nid='" + 
+					    functorId + "';" );
+			
+			/*
+			 * 2Nodes
+			 */
+			st.execute( "CREATE TABLE 2Nodes AS SELECT * FROM " + 
+					    databaseName + "_BN.2Nodes WHERE 2nid IN (SELECT " +
+					    node + " FROM " + databaseName + "_BN." + table + 
+					    " WHERE TargetNode = '" + functorId + "') or 2nid='" + 
+					    functorId + "';" );
+			
+			/*
+			 * RNodes
+			 */
+			st.execute( "CREATE TABLE RNodes AS SELECT * FROM " + 
+					    databaseName + "_BN.RNodes WHERE rnid IN (SELECT " +
+					    node + " FROM " + databaseName + "_BN." + table + 
+					    " WHERE TargetNode = '" + functorId + "') or rnid " + 
+					    "IN (SELECT rnid FROM " + databaseName + 
+					    "_BN.RNodes_2Nodes WHERE 2nid IN (SELECT  2nid FROM " +
+					    databaseName + "_target_setup.2Nodes)) or rnid='" + 
+					    functorId + "';" );
+			
+			/*
+			 * Get pvars for functor
+			 */
+			System.out.println("Functor: '"+functorId+"'");
+			ArrayList<String> functorArgs = GetFunctorArgs( functorId );
+			
+			/*
+			 * Perform Groundings assignments
+			 * Run Learner for each Grounding
+			 */
+			ArrayList<String> functorArgValues = new ArrayList<String>();
+			
+			/*
+			 * TEST
+			 */
+			groundingCount = 1;
+			
+			GetGroundings( functorArgs, functorArgValues, 0 );
+			
+			/*
+			 * Post-processing on *_final_CT column names for RNodes
+			 */
+			postProcess( st );
+			
+			/*
+			 * Create *_final table
+			 */
+			createFinal( functorArgs );
+			
+			/*
+			 * Cleanup
+			 */
+			st.execute( "DROP TABLE 1Nodes;" );
+			st.execute( "DROP TABLE 2Nodes;" );
+			st.execute( "DROP TABLE RNodes;" );
+		}
+		
+		st.close();
+		
+		Files.delete(path);
+		Files.copy(origpath, path);
+		Files.delete(origpath);
+		
+		disconnectDBTargetFinalCT();
+		disconnectDB();
+		disconnectDBFinal();
+		
+		long time2=System.currentTimeMillis();
+		
+		System.out.println( "Total FunctorWrapper time: " + 
+							( time2 - time1 ) );
+	}
+	
+	public static void setVarsFromConfig()
+	{
+		Config conf		= new Config();
+		databaseName	= conf.getProperty("dbname");
+		databaseName1	= databaseName + "_target";
+		databaseName2	= databaseName1 + "_setup";
+		databaseName3	= databaseName1 + "_final_CT";
+		databaseName4	= databaseName1 + "_CT";
+		databaseName5	= databaseName1 + "_final";
+		dbUsername		= conf.getProperty("dbusername");
+		dbPassword		= conf.getProperty("dbpassword");
+		dbaddress		= conf.getProperty("dbaddress");
+	}
+
+	public static void connectDBTargetSetup() throws SQLException
+	{
+		String CONN_STR2 = "jdbc:" + dbaddress + "/" + databaseName2;
+		try 
+		{
+			java.lang.Class.forName( "com.mysql.jdbc.Driver" );
+		} 
+		catch ( Exception ex ) 
+		{
+			System.err.println( "Unable to load MySQL JDBC driver" );
+		}
+		con0 = (Connection) DriverManager.getConnection( CONN_STR2, 
+														 dbUsername, 
+														 dbPassword );
+	}
+	
+	public static void connectDBTargetFinalCT() throws SQLException
+	{
+		String CONN_STR2 = "jdbc:" + dbaddress + "/" + databaseName3;
+		try 
+		{
+			java.lang.Class.forName( "com.mysql.jdbc.Driver" );
+		} 
+		catch ( Exception ex ) 
+		{
+			System.err.println( "Unable to load MySQL JDBC driver" );
+		}
+		con1 = (Connection) DriverManager.getConnection( CONN_STR2, 
+														 dbUsername, 
+														 dbPassword );
+	}
+	
+	public static void connectDBTargetFinal() throws SQLException
+	{
+		String CONN_STR2 = "jdbc:" + dbaddress + "/" + databaseName5;
+		try 
+		{
+			java.lang.Class.forName( "com.mysql.jdbc.Driver" );
+		} 
+		catch ( Exception ex ) 
+		{
+			System.err.println( "Unable to load MySQL JDBC driver" );
+		}
+		conFinal = (Connection) DriverManager.getConnection( CONN_STR2, 
+														 dbUsername, 
+														 dbPassword );
+	}
+	
+	public static void disconnectDB() throws SQLException
+	{
+		con0.close();
+	}
+	
+	public static void disconnectDBTargetFinalCT() throws SQLException
+	{
+		con1.close();
+	}
+	
+	public static void disconnectDBFinal()
+	{
+		try
+		{
+			conFinal.close();
+		}
+		catch (SQLException e)
+		{
+			System.out.println( "Failed to close connection to final table." );
+		}
+	}
+	
+	public static ArrayList<String> GetFunctors() throws SQLException
+	{
+		Statement st1 = con0.createStatement();
+		
+		System.out.println( "Getting functors..." );
+		
+		ResultSet rs = st1.executeQuery( "SELECT distinct Fid from " +
+										 "FNodes;" );
+		
+		ArrayList<String> functors = new ArrayList<String>();
+		
+		while ( rs.next() )
+		{
+			functors.add( rs.getString( 1 ) );
+		}
+		
+		st1.close();
+		
+		return functors;
+	}
+	
+	public static ArrayList<String> GetFunctorArgs( String functorId ) 
+	throws SQLException
+	{
+		Statement st1 = con0.createStatement();
+		
+		System.out.println( "Getting functor args..." );
+
+		st1.execute( "USE " + databaseName2 + ";" );
+		
+		System.out.println( "SELECT pvid FROM FNodes_pvars WHERE Fid = '" + 
+							functorId + "';" );
+		ResultSet rs = st1.executeQuery ( "SELECT pvid FROM FNodes_pvars " +
+										  "WHERE Fid = '" + functorId + "';" );
+		
+		ArrayList<String> argList = new ArrayList<String>();
+		
+		processingRNode = false;
+		
+		if ( !rs.first() )
+		{
+			System.out.println( "Result set is empty!" );
+			rs.close();
+			
+			rs = st1.executeQuery( "SELECT pvid FROM RNodes_pvars WHERE rnid " +
+								   "= '" + functorId + "';" );
+			
+			if ( !rs.first() )
+			{
+				System.out.println( "Result set is empty!" );
+				rs.close();
+				st1.close();
+				
+				System.out.println( "Functor " + functorId + " has " + argList.size() +
+									" arguments." );
+				
+				return argList;
+			}
+			
+			processingRNode = true;
+		}
+		
+		do
+		{
+			System.out.println("Added an argument: " + rs.getString(1) );
+			argList.add( rs.getString(1) );
+		} while ( rs.next() );
+		
+		rs.close();
+		st1.close();
+		
+		System.out.println( "Functor " + functorId + " has " + argList.size() +
+							" arguments." );
+		
+		return argList;
+	}
+	
+	public static void GetGroundings( ArrayList<String> args,
+									  ArrayList<String> argValues,
+									  int index )
+	throws SQLException, Exception
+	{
+		Statement st1 = con0.createStatement();
+		
+		/*
+		 * Get table for pvar
+		 */
+		ResultSet rs = st1.executeQuery( "SELECT TABLE_NAME FROM PVariables " +
+										 "WHERE pvid = '" + args.get(index) + 
+										 "';" );
+		
+		rs.first();
+		
+		/*
+		 * Get argument values for pvar
+		 */
+		System.out.println( "SELECT " + rs.getString(1) + 
+										  "_id FROM " + databaseName + "." + 
+										  rs.getString(1) + ";" );
+		ResultSet rs2 = st1.executeQuery( "SELECT " + rs.getString(1) + 
+										  "_id FROM " + databaseName + "." + 
+										  rs.getString(1) + ";" );
+		
+		while ( !rs2.isClosed() && rs2.next() )
+		{
+			argValues.add( rs2.getString(1) );
+			
+			/*
+			 * Get the rest of the argument assignments
+			 */
+			if ( index != args.size()-1 )
+			{
+				GetGroundings( args, argValues, index + 1 );
+				argValues.remove(index);
+				continue;
+			}
+			
+			Statement st2 = con0.createStatement();
+			st2.execute( "DROP TABLE IF EXISTS Groundings;" );
+			st2.execute( "CREATE TABLE Groundings ( pvid varchar(40) NOT " +
+						 "NULL, id varchar(256) NOT NULL, PRIMARY KEY " +
+						 "(pvid,id) );" );
+			
+			for ( int i = 0; i < args.size(); i++ )
+			{
+				System.out.println("GROUNDINGS PREP: INSERT INTO Groundings Values( '" + 
+							  args.get(i) + "', '" + argValues.get(i) + "' );" );
+				st2.execute ( "INSERT INTO Groundings Values( '" + 
+							  args.get(i) + "', '" + argValues.get(i) + "' );" );
+			}
+			
+			/*
+			 * Perform Bayes Learning
+			 */			
+			int max = BayesBaseCT_SortMerge.buildCTTarget();
+			
+			CSVPrecomputor.runCSV();
+			
+			/*
+			 * Store Results
+			 * 	1. Store Groundings in vertical alignment for join
+			 *  2. Get largest rchain to get counts
+			 *  3. Join GroundingsVertical to `<rchain>_counts` 
+			 *  4. Store in functor final CT
+			 *  
+			 *  1.
+			 */
+			Statement st3 = con1.createStatement();
+			
+			String tableString = "CREATE TABLE GroundingsVertical " +
+								 "(GroundingsNumber INT";
+			
+			for ( int i = 0; i < args.size(); i++ )
+			{
+				tableString += ", "+args.get(i) + " INT";
+			}
+			
+			tableString += ");";
+			
+			System.out.println( tableString );
+			st3.execute( tableString );
+			
+			String insertString = "INSERT INTO GroundingsVertical Values (" +
+								  groundingCount;
+			
+			for ( int i = 0; i < argValues.size(); i++ )
+			{
+				insertString += ", " + argValues.get(i);
+			}
+			
+			insertString += ");";
+			
+			System.out.println( insertString );
+			st3.execute( insertString );
+			
+			/*
+			 *  2.
+			 */
+			String rchainQuery = "SELECT name FROM " + databaseName1 + 
+								 "_BN.lattice_set WHERE length = " + max + ";";
+			System.out.println( rchainQuery );
+			ResultSet rsRchain = st3.executeQuery( rchainQuery );
+			
+			String rchain = "";
+			boolean rchainExists = false;
+			
+			if ( rsRchain.absolute(1))
+			{
+				rchainExists = true;
+				rchain = rsRchain.getString(1);
+				
+				rsRchain.close();
+			}
+			else
+			{
+				rchain = args.get(index);
+			}
+			
+			/*
+			 *  3.
+			 */
+			String tempTableString = "";
+			if ( rchainExists )
+			{
+				tempTableString = "CREATE TABLE tempJoin AS SELECT * FROM " +
+								  "(SELECT * FROM GroundingsVertical) G " +
+								  "JOIN (SELECT * FROM " + databaseName4 + 
+								  ".`" + rchain.replace( "`","" ) + 
+								  "_CT`) A;";
+			}
+			else
+			{
+				tempTableString = "CREATE TABLE tempJoin AS SELECT * FROM " +
+								  "(SELECT * FROM GroundingsVertical) G " +
+								  "JOIN (SELECT * FROM " + databaseName4 + 
+								  ".`" + rchain.replace( "`","" ) + 
+								  "_counts`) A;";
+			}
+			
+			st3.execute( tempTableString );
+			
+			/*
+			 *  4.1 Check if table already exists
+			 *  4.2 If it doesn't, create it
+			 *  4.3 Otherwise, insert new values into existing
+			 */
+			boolean exists = false;
+			String functorIdhld = functorId;
+			
+			if ( processingRNode )
+			{
+				ResultSet rNodeName = st3.executeQuery( "SELECT orig_rnid " + 
+														"FROM " + databaseName +
+														"_BN.RNodes WHERE rnid = '" +
+														functorId + "';" );
+				
+				if ( rNodeName.absolute( 1 ) )
+				{
+					functorId = rNodeName.getString(1);
+				}
+				
+				rNodeName.close();
+			}
+			
+			String checkCTExists = "SHOW TABLES LIKE '" + 
+								   functorId.replace( "`", "" ) + 
+								   "_final_CT';";
+			
+			System.out.println( checkCTExists );
+			
+			ResultSet rsExists = st3.executeQuery( checkCTExists );
+			
+			if ( rsExists.absolute(1) )
+			{
+				exists = true;
+			}
+			
+			rsExists.close();
+			
+			if ( exists )
+			{
+				String insertNewGrounding = "INSERT INTO `" + 
+								  			functorId.replace( "`", "" ) + 
+								  			"_final_CT` SELECT * FROM " +
+								  			"tempJoin;";
+				
+				System.out.println( insertNewGrounding );
+				
+				st3.execute( insertNewGrounding );
+			}
+			else
+			{
+				String createString = "CREATE TABLE `" + 
+									  functorId.replace( "`", "" ) + 
+									  "_final_CT` AS SELECT * FROM tempJoin;";
+				
+				System.out.println( createString );
+	
+				st3.execute( createString );
+			}
+			
+			functorId = functorIdhld;
+			
+			/*
+			 * Cleanup
+			 */
+			st3.execute( "DROP TABLE tempJoin" );
+			st3.execute( "DROP TABLE GroundingsVertical" );
+			st3.close();
+			
+			st2.execute( "DROP TABLE Groundings;" );
+			
+			st2.close();
+			
+			argValues.remove(index);
+			
+			groundingCount++;
+		}
+		
+		st1.close();
+	}
+	
+	public static void postProcess( Statement st ) throws SQLException
+	{
+		System.out.println( "SELECT orig_rnid, rnid FROM" +
+				" " + databaseName1 + "_BN." +
+				"RNodes;" );
+		ResultSet rNodes = st.executeQuery( "SELECT orig_rnid, rnid FROM" +
+				" " + databaseName1 + "_BN." +
+				"RNodes;" );
+
+		ArrayList<String> rnids = new ArrayList<String>();
+		ArrayList<String> origrnids = new ArrayList<String>();
+		
+		while ( rNodes.next() )
+		{
+			origrnids.add( rNodes.getString(1));
+			rnids.add( rNodes.getString(2));
+		}
+		
+		rNodes.close();
+		
+		String realFunctorId = functorId;
+		
+		if ( processingRNode )
+		{
+			System.out.println( "SELECT orig_rnid " + 
+					"FROM " + databaseName +
+					"_BN.RNodes WHERE rnid = '" +
+					functorId + "';" );
+			ResultSet rNodeName = st.executeQuery( "SELECT orig_rnid " + 
+													"FROM " + databaseName +
+													"_BN.RNodes WHERE rnid = '" +
+													functorId + "';" );
+			
+			if ( rNodeName.absolute( 1 ) )
+			{
+				functorId = rNodeName.getString(1);
+			}
+			
+			rNodeName.close();
+		}
+		
+		for ( int i = 0; i < rnids.size(); i++ )
+		{
+			System.out.println( "SHOW COLUMNS FROM " + databaseName3 + ".`" + 
+								functorId.replace("`", "") + "_final_CT` " + 
+								"WHERE Field = '" + 
+								rnids.get(i).replace("`", "") + "';" );
+			ResultSet rsTypes = st.executeQuery( "SHOW COLUMNS FROM " + 
+												 databaseName3 + ".`" + 
+												 functorId.replace("`", "") + 
+												 "_final_CT` WHERE Field = '" + 
+												 rnids.get(i).replace("`", "") + 
+												 "';");
+			
+			if ( !rsTypes.absolute(1) )
+			{
+				System.out.println( "Failed to get type for column " + 
+									origrnids.get(i) );
+				rsTypes.close();
+				
+				functorId = realFunctorId;
+				return;
+			}
+			
+			String type = rsTypes.getString( 2 );
+			rsTypes.close();
+			
+			System.out.println( "ALTER TABLE " + databaseName3 + ".`" + 
+					functorId.replace("`", "") + "_final_CT` CHANGE COLUMN " + 
+					rnids.get(i) + " " + origrnids.get(i) + " " + type + ";" );
+			st.execute( "ALTER TABLE " + databaseName3 + ".`" + 
+						functorId.replace("`", "") + "_final_CT` CHANGE COLUMN " + 
+						rnids.get(i) + " " + origrnids.get(i) + " " + type + ";" );
+		}
+		
+		functorId = realFunctorId;
+	}
+	
+	public static void createFinal( ArrayList<String> args )
+	{
+		try
+		{
+			String actualNodeName = "";
+			Statement st = null;
+			
+			st = conFinal.createStatement();
+			
+			if ( processingRNode )
+			{
+				ResultSet rs = st.executeQuery( "SELECT orig_rnid FROM " + 
+												databaseName + "_BN.RNodes " +
+												"WHERE rnid = '" + functorId + 
+												"';" );
+				
+				if ( !rs.absolute( 1 ) )
+				{
+					System.out.println( "Failed to find RNode." );
+					rs.close();
+					st.close();
+					return;
+				}
+				
+				actualNodeName = rs.getString( 1 );
+				
+				rs.close();
+			}
+			else
+			{
+				actualNodeName = functorId;
+			}
+			
+			Statement st2 = con1.createStatement();
+			
+			System.out.println( "SHOW COLUMNS FROM `" + 
+								actualNodeName.replace("`", "") + "_final_CT`" + 
+								" WHERE Field <> '" + 
+								actualNodeName.replace("`", "") + "' AND " + 
+								"Field <> 'GroundingsNumber' AND Field <> " + 
+								"'MULT';" );
+			ResultSet rs = st2.executeQuery( "SHOW COLUMNS FROM `" + 
+											 actualNodeName.replace("`", "") + 
+											 "_final_CT` WHERE Field <> '" + 
+											 actualNodeName.replace("`", "") + 
+											 "' AND Field <> " + 
+											 "'GroundingsNumber' AND Field " + 
+											 "<> 'MULT';");
+			
+			ArrayList<String> fixedColumns = new ArrayList<String>();
+			
+			while ( rs.next() )
+			{
+				fixedColumns.add( "`" + rs.getString( 1 ) + "`" );
+			}
+			
+			rs.close();
+			st2.close();
+			
+			String viewName = "`SumOut_" + 
+							  actualNodeName.replace( "`" , "" ) + "`";
+			
+			String createView = "CREATE VIEW " + viewName + " AS SELECT ";
+			
+			int len = fixedColumns.size();
+			
+			for ( int i = 0; i < len; i++ )
+			{
+				createView += fixedColumns.get( i ) + ", ";
+			}
+			
+			createView += "SUM(MULT) AS MULT FROM " + databaseName3 + ".`" + 
+						  actualNodeName.replace("`", "") + "_final_CT` GROUP BY ";
+			
+			for ( int i = 0; i < len; i++ )
+			{
+				if ( i == ( len - 1 ) )
+				{
+					createView += fixedColumns.get( i ) + ";";
+				}
+				else
+				{
+					createView += fixedColumns.get( i ) + ", ";
+				}
+			}
+			
+			System.out.println( createView );
+			
+			st.execute( createView );
+			
+			String createTable = "CREATE TABLE `" + 
+								 actualNodeName.replace( "`" , "" ) + 
+								 "_final` AS SELECT ";
+			
+			int numArgs = args.size();
+			
+			for ( int i = 0; i < numArgs; i++ )
+			{
+				createTable += args.get( i ) + ", ";
+			}
+			
+			createTable += "ChildValue AS " + actualNodeName + ", SUM(" + 
+						   viewName + ".MULT * " + databaseName + "_BN.`" +
+						   functorId.replace( "`" , "" ) + "_CP`.likelihood) " +
+						   "AS weight_product FROM " + databaseName + "_BN.`" +
+						   functorId.replace( "`" , "" ) + "_CP`, " +
+						   viewName;
+			
+			boolean written = false;
+			
+			for ( int i = 0; i < len; i++ )
+			{
+				boolean isArg = false;
+				
+				for ( int j = 0; j < numArgs; j++ )
+				{
+					if ( fixedColumns.get(i).replace("`","").equalsIgnoreCase( args.get( j ) ) )
+					{
+						isArg = true;
+						break;
+					}
+				}
+				
+				if ( isArg )
+				{
+					continue;
+				}
+				
+				ResultSet rs2 = st.executeQuery( "SELECT rnid FROM " + 
+						databaseName + "_BN.RNodes " +
+						"WHERE orig_rnid = '" + fixedColumns.get( i ) + 
+						"';" );
+
+				if ( !rs2.absolute( 1 ) )
+				{
+					rs2.close();
+					
+					if ( written )
+					{
+						createTable += " AND ";
+					}
+					else
+					{
+						createTable += " WHERE ";
+					}
+					
+					createTable += viewName+ "." + fixedColumns.get( i ) + 
+								   " = " + databaseName + "_BN.`" +
+								   functorId.replace( "`" , "" ) + "_CP`." +
+								   fixedColumns.get( i );
+				}
+				else
+				{
+					String col = rs2.getString( 1 );
+					rs2.close();
+					
+					/*
+					 * Some RNodes won't be in _CP table if they were not a parent
+					 * Check RNode is in _CP table
+					 */
+					System.out.println( "SHOW COLUMNS FROM " +
+										   databaseName + "_BN.`" +
+										   functorId.replace( "`" , "" ) + 
+										   "_CP` WHERE Field = '" + col.replace("`", "") + "';" );
+					rs2 = st.executeQuery( "SHOW COLUMNS FROM " +
+										   databaseName + "_BN.`" +
+										   functorId.replace( "`" , "" ) + 
+										   "_CP` WHERE Field = '" + col.replace("`", "") + "';" );
+					
+					if ( !rs2.absolute( 1 ) )
+					{
+						rs2.close();
+						continue;
+					}
+					
+					/*
+					 * RNode is in _CP table
+					 */
+					rs2.close();
+					
+					if ( written )
+					{
+						createTable += " AND ";
+					}
+					else
+					{
+						createTable += " WHERE ";
+					}
+					
+					createTable += viewName+ "." + fixedColumns.get( i ) + 
+								   " = " + databaseName + "_BN.`" +
+								   functorId.replace( "`" , "" ) + "_CP`." +
+								   col;
+				}
+				
+				written = true;
+			}
+			
+			createTable += " GROUP BY ";
+			
+			for ( int i = 0; i < numArgs; i++ )
+			{
+				createTable += args.get( i ) + ", ";
+			}
+			
+			createTable += actualNodeName + ";";
+			
+			System.out.println( createTable );
+			st.execute( createTable );
+			
+			st.close();
+		}
+		catch (SQLException e)
+		{
+			System.out.println( "Failed to create statement!" );
+			e.printStackTrace();
+			return;
+		}
+	}
+}
