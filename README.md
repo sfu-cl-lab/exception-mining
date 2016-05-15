@@ -1,4 +1,7 @@
 # How to run OutlierDetection code  
+  
+**Please replace config files with your own database settings before continuing**
+  
 ## First run project `BayesBaseNew`  
   
 1. Make yourDatabaseName_setup in the database server. You can use any of the BayeBase codes to generate the setup database. My code doesn't generate the setup. You can use GeneralBayesBase to generate Setup.
