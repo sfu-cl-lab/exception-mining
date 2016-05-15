@@ -43,7 +43,7 @@ line 127:  as shown below:
     + In `BayesBaseNew/cfg/groundcfg/scorecomputation.cfg` change ELD=1
     + In `BayesBaseNew/cfg/groundcfg/subsetctcomputation.cfg` make Grounded=1 and ELD=1  
              
-## Then run project `ScoreComputation`   
+## Then run `ScoreComputation`   
 + In order to run `ScoreComputation` you have to compelete both runs described above.
 + You have to make a table named `PlayersCalss` with the format of `Premier_League_Midfielder_Dec2015_CorrelationSchema`.`PlayersClass` where you label which data points are outlier and which are not: then in the `ScoreComputation/src/config.cfg`, change all database name to your databasename. OriginalDB should be name of result database of your first run and GeneralDB should be for your second run. OutlierIndex should be the label of outlier class in the PlayersClass.
 + `Threshold` shows number of known outliers in data and `NonOutlier` is the number of non-outlier.
